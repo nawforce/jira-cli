@@ -43,15 +43,28 @@ jobs:
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
+        # Set build variables similar to Makefile
+        LDFLAGS: >-
+          -X github.com/ankitpokhrel/jira-cli/internal/version.GitCommit=${{ github.sha }}
+          -X github.com/ankitpokhrel/jira-cli/internal/version.SourceDateEpoch=${{ github.event.head_commit.timestamp }}
+          -X github.com/ankitpokhrel/jira-cli/internal/version.Version=${{ github.ref_name }}
+          -s -w
       run: |
-        make build
+        # Build the main jira binary instead of all packages
+        go build -ldflags="${LDFLAGS}" -o jira ./cmd/jira
+        
+        # Rename binary for platform
         binary_name="jira"
         if [ "${{ matrix.goos }}" = "windows" ]; then
           binary_name="jira.exe"
+          mv jira jira.exe
         fi
-        mv "$binary_name" "jira-${{ matrix.suffix }}"
+        
+        # Final rename to platform-specific name
         if [ "${{ matrix.goos }}" = "windows" ]; then
-          mv "jira-${{ matrix.suffix }}" "jira-${{ matrix.suffix }}"
+          mv jira.exe "jira-${{ matrix.suffix }}"
+        else
+          mv jira "jira-${{ matrix.suffix }}"
         fi
     
     - name: Upload artifact
