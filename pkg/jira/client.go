@@ -105,25 +105,27 @@ type MTLSConfig struct {
 
 // Config is a jira config.
 type Config struct {
-	Server     string
-	Login      string
-	APIToken   string
-	AuthType   *AuthType
-	Insecure   *bool
-	Debug      bool
-	MTLSConfig MTLSConfig
+	Server        string
+	Login         string
+	APIToken      string
+	AuthType      *AuthType
+	Insecure      *bool
+	Debug         bool
+	CFAccessToken string
+	MTLSConfig    MTLSConfig
 }
 
 // Client is a jira client.
 type Client struct {
-	transport http.RoundTripper
-	insecure  bool
-	server    string
-	login     string
-	authType  *AuthType
-	token     string
-	timeout   time.Duration
-	debug     bool
+	transport     http.RoundTripper
+	insecure      bool
+	server        string
+	login         string
+	authType      *AuthType
+	token         string
+	cfAccessToken string
+	timeout       time.Duration
+	debug         bool
 }
 
 // ClientFunc decorates option for client.
@@ -132,11 +134,12 @@ type ClientFunc func(*Client)
 // NewClient instantiates new jira client.
 func NewClient(c Config, opts ...ClientFunc) *Client {
 	client := Client{
-		server:   strings.TrimSuffix(c.Server, "/"),
-		login:    c.Login,
-		token:    c.APIToken,
-		authType: c.AuthType,
-		debug:    c.Debug,
+		server:        strings.TrimSuffix(c.Server, "/"),
+		login:         c.Login,
+		token:         c.APIToken,
+		authType:      c.AuthType,
+		cfAccessToken: c.CFAccessToken,
+		debug:         c.Debug,
 	}
 
 	for _, opt := range opts {
@@ -283,6 +286,11 @@ func (c *Client) request(ctx context.Context, method, endpoint string, body []by
 		req.Header.Add("Authorization", "Bearer "+c.token)
 	case string(AuthTypeBasic):
 		req.SetBasicAuth(c.login, c.token)
+	}
+
+	// Add Cloudflare access token header if configured
+	if c.cfAccessToken != "" {
+		req.Header.Add("cf-access-token", c.cfAccessToken)
 	}
 
 	httpClient := &http.Client{Transport: c.transport}

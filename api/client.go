@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/spf13/viper"
@@ -59,6 +60,20 @@ func Client(config jira.Config) *jira.Client {
 	}
 	if config.MTLSConfig.ClientKey == "" {
 		config.MTLSConfig.ClientKey = viper.GetString("mtls.client_key")
+	}
+
+	// Cloudflare Access Token
+	if config.CFAccessToken == "" {
+		token, err := jira.GetCloudflareAccessToken(config.Server)
+		if err != nil {
+			// Log the error but don't fail - allow jira-cli to work without CF token
+			// Users can check with --debug flag if needed
+			if config.Debug {
+				fmt.Printf("Warning: Failed to get Cloudflare access token: %v\n", err)
+			}
+		} else {
+			config.CFAccessToken = token
+		}
 	}
 
 	jiraClient = jira.NewClient(
