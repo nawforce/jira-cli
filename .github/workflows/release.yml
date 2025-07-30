@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g., v1.0.0-cf)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64.exe
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        make build
+        binary_name="jira"
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          binary_name="jira.exe"
+        fi
+        mv "$binary_name" "jira-${{ matrix.suffix }}"
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          mv "jira-${{ matrix.suffix }}" "jira-${{ matrix.suffix }}"
+        fi
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: jira-${{ matrix.suffix }}
+        path: jira-${{ matrix.suffix }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Prepare release files
+      run: |
+        mkdir -p release
+        find . -name "jira-*" -type f -exec cp {} release/ \;
+        ls -la release/
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release/*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+        name: ${{ github.event.inputs.tag || github.ref_name }}
+        body: |
+          ## Cloudflare Access Support
+
+          This release adds support for Cloudflare Access tokens to bypass Cloudflare Zero Trust endpoint protection.
+
+          ### New Features
+          - **Automatic token generation**: Set `CF_ACCESS_TOKEN="auto"` to use cloudflared
+          - **Manual token support**: Set `CF_ACCESS_TOKEN="your-token"`
+          - **Seamless integration**: Works with existing jira-cli authentication
+
+          ### Usage
+          ```bash
+          # Automatic mode (requires cloudflared)
+          export CF_ACCESS_TOKEN="auto"
+          jira issue list
+
+          # Manual token
+          export CF_ACCESS_TOKEN="eyJhbGciOiJSUzI1NiI..."
+          jira issue list
+          ```
+
+          ### Installation
+          Download the appropriate binary for your platform and add it to your PATH.
+
+          ### Requirements
+          - For automatic mode: Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
